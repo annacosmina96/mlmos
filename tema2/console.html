@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>console</title>
+        <style>
+        body,html {margin:0;padding:0;}
+        </style>
+        
+    </head>
+    <body>
+        <canvas id="gamescreen">You're browser does not support HTML5.</canvas>
+     
+     <script type="text/javascript"t>
+            
+            var ctx = null;
+            var theCanvas = null;
+            var lineHeight = 20;
+            
+            var widthOffset = 2;
+            var cursorWidth = 8;
+            var cursorHeight = 3;
+            var fontColor = "#C0C0C0";
+            var outputFont = '12pt Consolas';
+            var charWidth;
+            
+            var allUserCmds = [ ]; // array of strings to hold the commands user types
+            var currentCmd = ""; // string to hold current cmd user is typing
+            
+            var PROMPT = "Hunt the Wumpus:\ >";
+            var promptWidth = null;
+            var promptPad = 3;
+            var leftWindowMargin = 2;
+            var cursor = null;
+            window.addEventListener("load", initApp);
+            var flashCounter = 1;
+            
+            // settings
+            var totalRooms = 20;
+            var connections = [[1,4,7],[0,2,9],[1,3,11],[2,4,13],[0,3,5],[4,6,14],[5,7,16],[0,6,10],[9,11,18],[1,8,10],[7,9,19],[2,8,12],[11,13,17],[3,12,14],[5,13,15],[14,16,17],[6,15,19],[12,15,18],[8,17,19],[10,16,18]];
+            var numBats = 2;
+            var numPits = 2;
+            var bGameOver = false;
+            
+            // gameplay vars
+            var playerPos;
+            var arrows;
+            var cave;
+            
+            
+            
+            function initApp()
+            {
+                
+                theCanvas = document.getElementById("gamescreen");
+                ctx = theCanvas.getContext("2d");
+                ctx.font = outputFont;
+                var metrics = ctx.measureText("W");
+                // rounded to nearest int
+                charWidth = Math.ceil(metrics.width);
+                promptWidth = 140 ;
+                cursor = new appCursor({x:promptWidth,y:lineHeight,width:cursorWidth,height:cursorHeight});
+                
+                window.addEventListener("resize", draw);
+                window.addEventListener("keydown",keyDownHandler);
+                window.addEventListener("keypress",showKey);
+                initViewArea();
+                setInterval(flashCursor,300);
+                function appCursor (cursor){
+                    this.x = cursor.x;
+                    this.y = cursor.y;
+                    this.width = cursor.width;
+                    this.height = cursor.height;
+                    
+                }
+                
+            }
+        
+        function drawNewLine(){
+            ctx.font = outputFont;
+            ctx.fillStyle = fontColor;
+            var textOut = PROMPT;
+            ctx.fillText(textOut,leftWindowMargin, cursor.y + lineHeight);
+        }
+        
+        function drawPrompt(Yoffset)
+        {
+            ctx.font = outputFont;
+            ctx.fillStyle = fontColor;
+            var textOut = PROMPT;
+            ctx.fillText(PROMPT,leftWindowMargin, Yoffset * lineHeight);
+            
+        }
+        
+        function blotPrevChar(){
+            blotOutCursor();
+            ctx.fillStyle = "#000000";
+            cursor.x-=charWidth;
+            ctx.fillRect(cursor.x,cursor.y-(charWidth + widthOffset),cursor.width+3,15);
+        }
+        
+        function blotOutCursor(){
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(cursor.x,cursor.y,cursor.width,cursor.height);
+        }
+        
+        function keyDownHandler(e){
+            
+            var currentKey = null;
+            if (e.code !== undefined)
+            {
+                currentKey = e.code;
+                console.log("e.code : " + e.code);
+            }
+            else
+            {
+                currentKey = e.keyCode;
+                console.log("e.keyCode : " + e.keyCode);
+            }
+            console.log(currentKey);
+            // handle backspace key
+            if((currentKey === 8 || currentKey === 'Backspace') && document.activeElement !== 'text') {
+                e.preventDefault();
+                // promptWidth is the beginning of the line with the c:\>
+                if (cursor.x > promptWidth)
+                {
+                    blotPrevChar();
+                    if (currentCmd.length > 0)
+                    {
+                        currentCmd = currentCmd.slice(0,-1);
+                    }
+                }
+            }
+            // handle <ENTER> key
+            
+     
+            if (currentKey == 13 || currentKey == 'Enter')
+            {
+                
+                
+                if(currentCmd.trim()==new String("start").valueOf())
+                {
+                    startSetup();
+                    allUserCmds.push("currentCmd");
+                    currentCmd = "";
+                    
+                }
+                else
+                {
+                    if (currentCmd.length > 0)
+                    {
+                        allUserCmds.push("currentCmd");
+                        clickGo(currentCmd);
+                        currentCmd = "";
+                        
+                    }
+                    
+                }
+                
+                
+                blotOutCursor();
+                drawNewLine();
+                cursor.x=promptWidth-charWidth;
+                cursor.y+=lineHeight;
+                
+                
+            }
+        }
+        
+        function myShoot(numar)
+        {
+            var output = "";
+            
+            if (arrows > 0)
+            {
+                arrows --;
+                
+                ctx.fillText(PROMPT+"You shoot an arrow into room " + (numar + 1)+". ",leftWindowMargin, cursor.y + lineHeight);
+                blotOutCursor();
+                drawNewLine();
+                cursor.x=promptWidth-charWidth;
+                cursor.y+=lineHeight;
+                
+                
+                if (cave[numar].wumpus == true)
+                {
+                    ctx.fillText(PROMPT+"You slay the wumpus! Well done! ",leftWindowMargin, cursor.y + lineHeight);
+                    blotOutCursor();
+                    drawNewLine();
+                    cursor.x=promptWidth-charWidth;
+                    cursor.y+=lineHeight;
+                    return;
+                }
+                else
+                {
+                    ctx.fillText(PROMPT+"It doesn't hit anything. ",leftWindowMargin, cursor.y + lineHeight);
+                    blotOutCursor();
+                    drawNewLine();
+                    cursor.x=promptWidth-charWidth;
+                    cursor.y+=lineHeight;
+                    
+                    if (arrows == 0)
+                    {
+                        ctx.fillText(PROMPT+"You have no more arrows!",leftWindowMargin, cursor.y + lineHeight);
+                        blotOutCursor();
+                        drawNewLine();
+                        cursor.x=promptWidth-charWidth;
+                        cursor.y+=lineHeight;
+                        return;
+                    }
+                    else
+                    {
+                        output = wumpusMove(output, 0.75);
+                        ctx.fillText(PROMPT+output,leftWindowMargin, cursor.y + lineHeight);
+                        blotOutCursor();
+                        drawNewLine();
+                        cursor.x=promptWidth-charWidth;
+                        cursor.y+=lineHeight;
+                        
+                    }
+                }
+            }
+            else
+            {
+                ctx.fillText(PROMPT+"You have no more arrows!",leftWindowMargin, cursor.y + lineHeight);
+                blotOutCursor();
+                drawNewLine();
+                cursor.x=promptWidth-charWidth;
+                cursor.y+=lineHeight;
+                //gameOver();
+                return;
+            }
+            
+            
+            getNarration();
+            
+        }
+        
+        function clickGo(command) {
+            
+            var text = command.trim();
+            
+            if (text != "")
+            {
+                var num = text.match(/\d/g);
+                if (num != null) {
+                    num = num.join("") - 1;
+                    
+                    if (num < totalRooms && num >= 0)
+                    {
+                        // do move
+                        if (text.indexOf("move") !== -1) {
+                            for (var i = 0; i < cave[playerPos].neighbours.length; i++) {
+                                if (cave[playerPos].neighbours[i] == num) {
+                                    playerPos = num;
+                                    doMove();
+                                    return;
+                                }
+                            }
+                            
+                        }
+                        // do shoot
+                        if (text.indexOf("shoot") !== -1)
+                        {
+                            for (var i = 0; i < cave[playerPos].neighbours.length; i++) {
+                                if (cave[playerPos].neighbours[i] == num) {
+                                    myShoot(num);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ctx.fillText(PROMPT+"Invalid command.",leftWindowMargin, cursor.y + lineHeight);
+            blotOutCursor();
+            drawNewLine();
+            cursor.x=promptWidth-charWidth;
+            cursor.y+=lineHeight;
+            
+            
+        }
+        
+        
+        function startSetup() {
+            
+            
+            
+            bGameOver = false
+            playerPos = 0;
+            arrows = 5;
+            cave = Cave();
+            getNarration();
+            
+            
+            
+        }
+        
+        
+        function showKey(e){
+            blotOutCursor();
+            
+            ctx.font = outputFont;
+            ctx.fillStyle = fontColor;
+            
+            ctx.fillText  (String.fromCharCode(e.charCode),cursor.x, cursor.y);
+            cursor.x += charWidth;
+            currentCmd += String.fromCharCode(e.charCode);
+        }
+        
+        
+        
+        function flashCursor(){
+            
+            var flag = flashCounter % 3;
+            
+            switch (flag)
+            {
+                case 1 :
+                case 2 :
+                {
+                    ctx.fillStyle = fontColor;
+                    ctx.fillRect(cursor.x,cursor.y,cursor.width, cursor.height);
+                    flashCounter++;
+                    break;
+                }
+                default:
+                {
+                    ctx.fillStyle = "#000000";
+                    ctx.fillRect(cursor.x,cursor.y,cursor.width, cursor.height);
+                    flashCounter= 1;
+                }
+            }
+        }
+        function cursor (cursor){
+            this.x = cursor.x;
+            this.y = cursor.y;
+            this.width = cursor.width;
+            this.height = cursor.height;
+        }
+        
+        function initViewArea() {
+            
+            
+            // the -5 in the two following lines makes the canvas area, just slightly smaller
+            // than the entire window.  this helps so the scrollbars do not appear.
+            ctx.canvas.width  =  window.innerWidth-5;
+            ctx.canvas.height = window.innerHeight-5;
+            
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height);
+            
+            ctx.font = outputFont;
+            ctx.fillStyle = fontColor;
+            var textOut = PROMPT;
+            
+            ctx.fillText  (textOut,leftWindowMargin, cursor.y);
+            draw();
+        }
+        
+        function draw()
+        {
+            ctx.canvas.width  = window.innerWidth-5;
+            ctx.canvas.height = window.innerHeight-5;
+            
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height);
+            ctx.font = outputFont;
+            ctx.fillStyle = fontColor;
+            
+            for (var i=0;i<allUserCmds.length;i++)
+            {
+                drawPrompt(i+1);
+                if (i == 0)
+                {
+                    xVal = promptWidth;
+                }
+                else
+                {
+                    xVal = promptWidth-charWidth;
+                }
+                
+                ctx.font = outputFont;
+                ctx.fillStyle = fontColor;
+                for (var letterCount = 0; letterCount < allUserCmds[i].length;letterCount++)
+                {
+                    ctx.fillText(allUserCmds[i][letterCount], xVal, lineHeight * (i+1));
+                    xVal+=charWidth;
+                }
+            }
+            if (currentCmd != "")
+            {
+                drawPrompt(Math.ceil(cursor.y/lineHeight));
+                ctx.font = outputFont;
+                ctx.fillStyle = fontColor;
+                xVal = promptWidth-charWidth;
+                for (var letterCount = 0; letterCount < currentCmd.length;letterCount++)
+                {
+                    ctx.fillText(currentCmd[letterCount], xVal, cursor.y);
+                    xVal += charWidth;
+                }
+            }
+            else
+            {
+                drawPrompt(Math.ceil(cursor.y/lineHeight));
+            }
+            
+            
+        }
+        
+        ///////////////////////////////////////////////////////////////////////////////////////////////////
+        
+        
+        function Room(number, neighbours) {
+            
+            this.number = number;
+            this.neighbours = neighbours;
+            
+            // hazards
+            this.pit = false;
+            this.bats = false;
+            this.wumpus = false;
+            
+        }
+        
+        function Cave() {
+            
+            
+            // initialise array of rooms
+            var rooms = new Array();
+            for (var i = 0; i < totalRooms; i++) {
+                rooms.push(new Room(i, connections[i]));
+            };
+            
+            // generate hazards
+            for (var i = 0; i < numPits; i++) {
+                var pit = getRandomRoom();
+                rooms[pit].pit = true;
+            };
+            
+            for (var i = 0; i < numBats; i++) {
+                var bats = getRandomRoom();
+                rooms[bats].bats = true;
+            };
+            
+            var wumpus = getRandomRoom();
+            rooms[wumpus].wumpus = true;
+            
+            // find entrance
+            playerPos = getVerySafeRoom(rooms);
+            
+            return rooms;
+            
+        }
+        
+        function getRandomRoom() {
+            return Math.max(0, Math.ceil(Math.random() * totalRooms) - 1);
+        }
+        
+        function getVerySafeRoom(allRooms) {
+            
+            var test = getRandomRoom();
+            
+            var safe = true;
+            for (var i = 0; i < 3; i++) {
+                if (allRooms[allRooms[test].neighbours[i]].pit == true || allRooms[allRooms[test].neighbours[i]].bats == true || allRooms[allRooms[test].neighbours[i]].wumpus == true) {
+                    safe = false;
+                }
+            };
+            
+            if (allRooms[test].pit == false && allRooms[test].bats == false && allRooms[test].wumpus == false && safe == true) {
+                return test;
+            }
+            else {
+                for (var i = 0; i < totalRooms; i++) {
+                    if (test > 0) {
+                        test --;
+                    }
+                    else {
+                        test = totalRooms - 1;
+                    }
+                    
+                    safe = true;
+                    for (var j = 0; j < 3; j++) {
+                        if (allRooms[allRooms[test].neighbours[j]].pit == true || allRooms[allRooms[test].neighbours[j]].bats == true || allRooms[allRooms[test].neighbours[j]].wumpus == true) {
+                            safe = false;
+                        }
+                    };
+                    
+                    if (allRooms[test].pit == false && allRooms[test].bats == false && allRooms[test].wumpus == false && safe == true) {
+                        return test;
+                    }
+                };
+            }
+            
+        }
+        
+        function getSafeRoom(allRooms) {
+            
+            var test = getRandomRoom();
+            
+            if (allRooms[test].pit == false && allRooms[test].bats == false && allRooms[test].wumpus == false) {
+                return test;
+            }
+            else {
+                for (var i = 0; i < totalRooms; i++) {
+                    if (test > 0) {
+                        test --;
+                    }
+                    else {
+                        test = totalRooms - 1;
+                    }
+                    
+                    if (allRooms[test].pit == false && allRooms[test].bats == false && allRooms[test].wumpus == false) {
+                        return test;
+                    }
+                };
+            }
+            
+        }
+        
+        function getNarration() {
+            
+            var pit = "";
+            var bats = "";
+            var wumpus = "";
+            
+            var exits = "";
+            
+            for (var i = 0; i < cave[playerPos].neighbours.length; i++) {
+                
+                if (cave[cave[playerPos].neighbours[i]].pit) {
+                    pit = "You feel a cold wind blowing from a nearby cavern.";
+                }
+                if (cave[cave[playerPos].neighbours[i]].bats) {
+                    bats = "You hear a rustling sound nearby.";
+                }
+                if (cave[cave[playerPos].neighbours[i]].wumpus) {
+                    wumpus = "You smell something terrible nearby.";
+                }
+                
+                exits = exits + (cave[playerPos].neighbours[i] + 1);
+                if (i < cave[playerPos].neighbours.length - 1) {
+                    exits = exits + ", ";
+                }
+                else {
+                    exits = exits + ".";
+                }
+                
+            };
+            var r=playerPos+1;
+            ctx.fillText(PROMPT+"You are in room "+r+". Exits lead to "+exits+"Do you want to move or shoot? ",leftWindowMargin, cursor.y + lineHeight);
+            blotOutCursor();
+            drawNewLine();
+            cursor.x=promptWidth-charWidth;
+            cursor.y+=lineHeight;
+            
+        }
+        
+        function wumpusMove(output, chance) {
+            
+            if (bGameOver == true) { return; }
+            
+            if (Math.random() <= chance) {
+                output += "You hear a rumbling in a nearby cavern.";
+                
+                for (var i = 0; i < cave.length; i++) {
+                    if (cave[i].wumpus == true) {
+                        var x = Math.min(Math.floor(Math.random() * cave[i].neighbours.length), cave[i].neighbours.length - 1);
+                        cave[i].wumpus = false;
+                        cave[cave[i].neighbours[x]].wumpus = true;
+                        if (cave[i].neighbours[x] == playerPos) {
+                            output += "The wumpus eats you up!";
+                            gameOver();
+                        }
+                    }
+                };
+            }
+            else {
+                if (cave[playerPos].wumpus == true) {
+                    output += "The wumpus eats you up!";
+                    gameOver();
+                }
+            }
+            
+            return output;
+            
+        }
+        
+        function doMove() {
+            
+            if (cave[playerPos].pit) {
+                
+                ctx.fillText(PROMPT+"You fall into a bottomless pit... ", leftWindowMargin, cursor.y + lineHeight);
+                blotOutCursor();
+                drawNewLine();
+                cursor.x=promptWidth-charWidth;
+                cursor.y+=lineHeight;
+                
+                // gameOver();
+                return;
+            }
+            else if (cave[playerPos].bats) {
+                cave[getRandomRoom()].bats = true;
+                
+                ctx.fillText(PROMPT+"Super bats whisk you away! ",leftWindowMargin, cursor.y + lineHeight);
+                blotOutCursor();
+                drawNewLine();
+                cursor.x=promptWidth-charWidth;
+                cursor.y+=lineHeight;
+                
+                var oldPos = playerPos;
+                playerPos = getSafeRoom(cave);
+                cave[oldPos].bats = false;
+            }
+            else if (cave[playerPos].wumpus) {
+                output="You startle the wumpus! ";
+                output = wumpusMove(output, 0.25);
+                
+                ctx.fillText(PROMPT+output,leftWindowMargin, cursor.y + lineHeight);
+                blotOutCursor();
+                drawNewLine();
+                cursor.x=promptWidth-charWidth;
+                cursor.y+=lineHeight;
+                
+                
+            }
+            
+            
+            getNarration();
+            
+        }
+        
+        
+        function gameOver() {
+            
+            if (bGameOver == false)
+            {
+                narrator.style.display = "none";
+                command.style.display = "none";
+                submit.style.display = "none";
+                reset.style.display = "";
+                bGameOver = true;
+            }
+            
+        }
+        
+            </script>
+    </body>
+</html>
+
